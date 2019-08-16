@@ -33,7 +33,8 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 </details>
-## Why
+
+## Motivation
 
 ### Problem
 
@@ -82,7 +83,7 @@ typedef struct {
   float lastReportBaroKpa;        // last reported barometric pressure (kPa)
   time_t lastReportTime;          // last reported time (Unix time)
   uint32_t reconnectCount;        // number of reconnection attempts
-  bool hasRegistered;             // device has registered on the network
+  bool hasGoodReading;            // device has registered on the network
   
 } retainedData_t;
 
@@ -122,6 +123,7 @@ Note that the passed in structs *must* be global scope: the `retained` keyword *
 gAppState->lastReportTemperatureC = getTemp();
 gAppState->lastReportBaroKpa = getPres();
 gAppState->lastReportTime = Time.now();
+gAppState->hasGoodReading = true;
 ```
 
 You do not need to know which retained area the library is currently working with &mdash; it will automatically direct the new data to the correct persistent data area.
@@ -134,6 +136,69 @@ gAppState.save();
 
 When the application restarts, these values will be transparently restored into `gAppState` for use.
 
+## Example
+
+```cpp
+#include "ParticleRetainedAtomic.h"
+
+// Persistent state:
+typedef struct {
+  float lastReportTemperatureC;   // last reported tempererature Celcius
+  float lastReportBaroKpa;        // last reported barometric pressure (kPa)
+  time_t lastReportTime;          // last reported time (Unix time)
+  uint32_t reconnectCount;        // number of reconnection attempts
+  bool hasRegistered;             // device has registered on the network
+  
+} retainedData_t;
+
+const retainedData_t PRAInitVals = {-1000, -1000, 0, 0, false};
+retained retainedData_t saveArea1, saveArea2;   // save pages
+retained ParticleRetainedAtomicData_t PRAData;  // checksums
+
+ParticleRetainedAtomic<retainedData_t> gAppState(saveArea1,
+                                                 saveArea2,
+                                                 PRAData,
+                                                 PRAInitVals);
+
+void setup() {
+  // gAppState already contains either init values or the last saved values
+  // You can access these stored values like so:
+  time_t lastEventTime = gAppState->lastReportTime;
+  // hasGoodReading initializes to false, so we know there is a good reading!
+  if (gAppState->hasGoodReading == true) {
+    printLastGoodValue(lastEventTime,
+                       gAppState->lastReportTemperatureC,
+                       gAppState->lastReportBaroKpa);
+  }
+}
+
+// Update saved state
+// Note that if a crash happens in this function,
+// the saved state will revert to the last successful save on reboot
+void myEvent() {
+    // Write new values like so:
+    gAppState->lastReportTemperatureC = getTemp();
+    gAppState->lastReportBaroKpa = getPres();
+    gAppState->lastReportTime = Time.now();
+    gAppState->hasGoodReading = true;
+    // then commit the changes all at once:
+    gAppState.save();
+}
+```
+
+## Other notes
+
+The library overrides the `->` operator to give you access to the struct type it is templated as. Further, it directs you to the proper location in retained memory at all times, which changes with every `.save()`. The `->` operator dereferences a typed pointer to the proper save structure, meaning that the compiler should always check types against it correctly. Even though it looks funny, the compiler understands what is going on here without magic.
+
+This unusual convention is intended to reduce typing and make code more understandable, but there are a couple of things you should not do. One is access the `retained` memory directly. Once it is passed to the `ParticleRetainedAtomic` constructor, leave it alone. The other thing is keeping a pointer to one of the structure items, i.e.
+
+```cpp
+time_t* pointer_to_the_unknown = &(gAppState->lastReportTime);
+```
+
+This will result in having a pointer to the location you want half the time and to committed and saved memory the other half. If you write to that committed location directly, it will invalidate your entire committed state. Don't Do It.
+
+That being said, the `->` usage shown in the examples is consistent and complete, so there shouldn't be a good reason to try anything else.
 
 ## Todo
 

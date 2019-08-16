@@ -40,7 +40,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 Sometimes it is necessary to store application state that will persist across multiple executions of your program. This carries the risk that that the application may be reset, crash, or be corrupted while in the process of updating multiple variables comprising the system state.
 
-When the application restarts, the inconsistent state may cause unanticipated program states resulting in difficult to reproduce bugs.
+When the application restarts, the inconsistent state variables may cause unanticipated program states or unexpected execution paths resulting in difficult to reproduce bugs.
 
 For example,
 
@@ -83,14 +83,14 @@ typedef struct {
   float lastReportBaroKpa;        // last reported barometric pressure (kPa)
   time_t lastReportTime;          // last reported time (Unix time)
   uint32_t reconnectCount;        // number of reconnection attempts
-  bool hasGoodReading;            // device has registered on the network
+  bool hasGoodReading;            // a good measurement has been taken
   
 } retainedData_t;
 
+// This is the value that will be set when the library first runs or is
+// unable to restore the state due to a problem
 const retainedData_t PRAInitVals = {-1000, -1000, 0, 0, false};
 ```
-
-(This is the value that will be set when the library first runs or is unable to restore the state due to a problem)
 
 Next declare **two** save areas of your custom struct type as `retained` and a `ParticleRetainedAtomicData_t` which maintains state for the `ParticleRetainedAtomic` object:
 
@@ -147,7 +147,7 @@ typedef struct {
   float lastReportBaroKpa;        // last reported barometric pressure (kPa)
   time_t lastReportTime;          // last reported time (Unix time)
   uint32_t reconnectCount;        // number of reconnection attempts
-  bool hasRegistered;             // device has registered on the network
+  bool hasGoodReading;            // a good measurement has been taken
   
 } retainedData_t;
 
@@ -190,13 +190,13 @@ void myEvent() {
 
 The library overrides the `->` operator to give you access to the struct type it is templated as. Further, it directs you to the proper location in retained memory at all times, which changes with every `.save()`. The `->` operator dereferences a typed pointer to the proper save structure, meaning that the compiler should always check types against it correctly. Even though it looks funny, the compiler understands what is going on here without magic.
 
-This unusual convention is intended to reduce typing and make code more understandable, but there are a couple of things you should not do. One is access the `retained` memory directly. Once it is passed to the `ParticleRetainedAtomic` constructor, leave it alone. The other thing is keeping a pointer to one of the structure items, i.e.
+This unusual convention is intended to reduce redundant code and make it more understandable, but there are a couple of things you should not do: One is access the `retained` structures directly. This memory should be passed to the `ParticleRetainedAtomic` constructor and left alone. The other thing is keeping a pointer to one of the structure items, i.e.
 
 ```cpp
 time_t* pointer_to_the_unknown = &(gAppState->lastReportTime);
 ```
 
-This will result in having a pointer to the location you want half the time and to committed and saved memory the other half. If you write to that committed location directly, it will invalidate your entire committed state. Don't Do It.
+This will result in having a pointer to the desired location half the time and to something else the other half. If you write to that location directly at the wrong time, it will invalidate your entire committed state. Don't Do It.
 
 That being said, the `->` usage shown in the examples is consistent and complete, so there shouldn't be a good reason to try anything else.
 
